@@ -1,0 +1,1 @@
+Implement warehouse guardrails and fix schema resolution, retries, routing, and Unicode notifications; meet 38/38 safety and 30/36 capability thresholds

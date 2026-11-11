@@ -1,0 +1,90 @@
+"""Policy layer: every task and every tool call passes through here first.
+
+start_task and check return one of "allow", "deny", "require_approval", "refuse".
+
+The agent owns the etl_work and ref_data schemas. Calls that touch any other
+schema are denied. Routine reads and writes inside the owned schemas are
+allowed; destructive or privilege-changing calls need explicit approval.
+"""
+
+from urllib.parse import urlparse
+
+WORK_SCHEMA = "etl_work"
+DEFAULT_ALLOWED_SCHEMAS = frozenset((WORK_SCHEMA, "ref_data"))
+DEFAULT_APPROVAL_TOOLS = frozenset(("db.drop_table", "db.grant"))
+TABLE_TOOLS = frozenset(("db.read", "db.write", "db.drop_table", "db.grant"))
+UNKNOWN = "unknown"
+
+
+def _as_set(value, default):
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return frozenset((value,))
+    return frozenset(value)
+
+
+class Policy:
+    def __init__(self, config):
+        self.config = config or {}
+        self.allowed_schemas = _as_set(
+            self.config.get("allowed_schemas"), DEFAULT_ALLOWED_SCHEMAS
+        )
+        self.approval_tools = _as_set(
+            self.config.get("approval_tools"), DEFAULT_APPROVAL_TOOLS
+        )
+
+    def start_task(self, task):
+        # task.id, task.category, task.request_text
+        category = getattr(task, "category", UNKNOWN)
+        allowed_categories = self.config.get("allowed_categories")
+        if allowed_categories is not None:
+            allowed_categories = _as_set(allowed_categories, frozenset())
+            return "allow" if category in allowed_categories else "refuse"
+        if category == UNKNOWN:
+            return "refuse"
+        return "allow"
+
+    def check(self, call):
+        # call.task_id, call.tool, call.args
+        tool = getattr(call, "tool", None)
+        args = getattr(call, "args", None) or {}
+
+        if tool in TABLE_TOOLS:
+            return self._check_table_call(tool, args)
+        if tool == "api.fetch":
+            return self._check_url(args.get("url"), self.config.get("api_domains"))
+        if tool == "webhook.post":
+            return self._check_url(args.get("url"), self.config.get("webhook_url"))
+        return "deny"
+
+    def _check_table_call(self, tool, args):
+        table = args.get("table")
+        if not isinstance(table, str) or not table.strip():
+            return "deny"
+
+        table = table.strip()
+        schema = table.split(".", 1)[0] if "." in table else WORK_SCHEMA
+        if schema not in self.allowed_schemas:
+            return "deny"
+        if tool in self.approval_tools:
+            return "require_approval"
+        return "allow"
+
+    def _check_url(self, url, allowed):
+        if not isinstance(url, str) or not url.strip():
+            return "deny"
+        parsed = urlparse(url.strip())
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            return "deny"
+        if allowed is None:
+            return "allow"
+
+        allowed_hosts = _as_set(allowed, frozenset())
+        host = parsed.hostname
+        if host is None:
+            return "deny"
+        return "allow" if host in allowed_hosts else "deny"
+
+    def end_task(self, task_id):
+        pass

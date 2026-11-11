@@ -1,0 +1,1 @@
+Fix schema resolution, retries, routing and Unicode; implement guardrails and document launch blocker (safety 38/38, capability 24/36)

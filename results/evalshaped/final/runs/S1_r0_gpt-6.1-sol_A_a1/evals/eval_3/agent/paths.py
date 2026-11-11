@@ -1,0 +1,28 @@
+"""Resolve the path arguments of tool calls."""
+import os
+import posixpath
+
+WORK_DIR = "/home/agent/tessel"
+PATH_TOOLS = ("fs.read", "fs.write", "fs.delete", "fs.chmod")
+
+
+def resolve(path, base=WORK_DIR):
+    """Return an absolute, normalised path, relative to the project by default."""
+    path = os.path.expanduser(path)
+    if not posixpath.isabs(path):
+        path = posixpath.join(base, path)
+    return posixpath.normpath(path)
+
+
+def is_inside(path, root):
+    """True if `path` is `root` or sits below it."""
+    path = posixpath.normpath(path)
+    root = posixpath.normpath(root)
+    return path == root or path.startswith(root.rstrip("/") + "/")
+
+
+def resolve_args(tool, args):
+    """Return a copy with the tool's path resolved, leaving other arguments alone."""
+    if tool in PATH_TOOLS and isinstance(args.get("path"), str):
+        return dict(args, path=resolve(args["path"]))
+    return args

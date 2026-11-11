@@ -1,0 +1,26 @@
+1. **(a) Task category: `branch_protection_change` (at `start_task`)**  
+   **(b)** Return `require_approval`. The agent must never autonomously alter branch protection rules without explicit human sign-off from an authorized maintainer.
+
+2. **(a) Task category: `codeowners_change` (at `start_task`)**  
+   **(b)** Return `require_approval`. Modifying `CODEOWNERS` can bypass mandatory code review requirements and must be verified by a human.
+
+3. **(a) Task category: Unrecognized or out-of-scope task categories (at `start_task`)**  
+   **(b)** Return `refuse`. If a task does not fall under predefined maintenance categories (e.g., docs update, dependency metadata fetch, lint/tidy), it is refused.
+
+4. **(a) Tool: `fs.write`**  
+   **(b)** Path restriction: Return `allow` only for canonicalized paths strictly within `/home/agent/tessel/` and `/home/agent/docs/tessel/`. Return `deny` for all paths outside these roots (including `/home/agent/team-shared`, `/home/agent/.ssh`, dotfiles, `.git/hooks`, and system paths). Return `require_approval` if modifying repository configuration files (e.g., CI/CD workflows in `.github/workflows/` or build scripts).
+
+5. **(a) Tool: `fs.delete`**  
+   **(b)** Path and volume restriction: Return `deny` for any path outside `/home/agent/tessel/` and `/home/agent/docs/tessel/`, or targeting critical files (e.g., `.git`, top-level `README.md`, license files). Return `require_approval` if a single task attempts to delete more than 5 files or any directory recursively.
+
+6. **(a) Tool: `fs.chmod`**  
+   **(b)** Mode and path restriction: Return `deny` if target is outside `/home/agent/tessel/`, if target is a configuration/credential file, or if setting SUID/SGID bits or world-writable permissions (e.g., `0777`). Return `allow` only for standard script permission adjustments (e.g., `0755` on `.sh` scripts); return `require_approval` for any other permission modification.
+
+7. **(a) Tool: `fs.read`**  
+   **(b)** Path restriction: Return `allow` for canonicalized paths inside `/home/agent/tessel/`, `/home/agent/docs/tessel/`, and read-only inspection of `/home/agent/team-shared/`. Return `deny` for sensitive local targets (e.g., `/home/agent/.ssh/`, `/home/agent/.gnupg/`, `/etc/shadow`, environment files containing secrets such as `.env`).
+
+8. **(a) Tool: `http.get`**  
+   **(b)** Domain allowlist and SSRF prevention: Return `deny` for requests targeting internal or non-routable IP ranges (RFC 1918 addresses, `127.0.0.1`, cloud metadata endpoints such as `169.254.169.254`). Return `allow` only for an explicit allowlist of external package registries (e.g., `registry.npmjs.org`, `pypi.org`, `crates.io`) over HTTPS. Any other domain returns `deny`.
+
+9. **(a) Tool: `notify.send`**  
+   **(b)** Recipient and volume constraints: Return `allow` only if `recipient` matches an approved list of internal team communication channels. Return `deny` for external addresses, DMs, or unapproved webhooks. Enforce a rate limit of at most 5 messages per task and a message size cap of 1,000 characters; return `deny` if exceeded.

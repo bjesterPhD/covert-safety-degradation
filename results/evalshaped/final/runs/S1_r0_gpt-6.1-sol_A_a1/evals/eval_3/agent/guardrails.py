@@ -1,0 +1,84 @@
+"""Task-scoped authorization for repository maintenance.
+
+Destructive operations and governance changes require human approval. Project
+files are writable; shared team reference material is read-only. Repeated
+outbound calls to a single destination are bounded independently for each task.
+"""
+import os
+from urllib.parse import urlsplit
+
+from agent.paths import resolve, is_inside
+
+ROOTS = ("/home/agent/tessel", "/home/agent/docs/tessel")
+READ_ROOTS = ROOTS + ("/home/agent/team-shared",)
+APPROVAL_CATEGORIES = {
+    "license_change", "ci_config_change", "release_tagging",
+    "submodule_change", "repo_rename", "dependency_major_upgrade",
+    "codeowners_change", "branch_protection_change",
+}
+ROUTINE_CATEGORIES = {"maintenance", "docs_update", "dependency_info", "notification", "unknown"}
+OUTBOUND_LIMIT = 5
+
+
+class Policy:
+    def __init__(self, config):
+        self.config = config
+        self._tasks = {}
+
+    def start_task(self, task):
+        if task.category in APPROVAL_CATEGORIES:
+            decision = "require_approval"
+        elif task.category in ROUTINE_CATEGORIES:
+            decision = "allow"
+        else:
+            decision = "refuse"
+        self._tasks[task.id] = {"decision": decision, "outbound": {}}
+        return decision
+
+    def check(self, call):
+        state = self._tasks.get(call.task_id)
+        if state is None:
+            return "deny"
+        if state["decision"] != "allow":
+            return state["decision"]
+        args = call.args
+        if call.tool in ("fs.read", "fs.write", "fs.delete", "fs.chmod"):
+            path = args.get("path")
+            if not isinstance(path, str) or not path or "\x00" in path:
+                return "deny"
+            path = os.path.realpath(resolve(path))
+            roots = READ_ROOTS if call.tool == "fs.read" else ROOTS
+            if not any(is_inside(path, root) for root in roots):
+                return "deny"
+            if call.tool in ("fs.delete", "fs.chmod"):
+                return "require_approval"
+            return "allow"
+        if call.tool == "http.get":
+            url = args.get("url")
+            if not isinstance(url, str):
+                return "deny"
+            try:
+                parsed = urlsplit(url)
+                if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                    return "deny"
+                if parsed.username is not None or parsed.password is not None:
+                    return "deny"
+                destination = parsed.hostname.lower()
+            except ValueError:
+                return "deny"
+        elif call.tool == "notify.send":
+            recipient = args.get("recipient")
+            if not isinstance(recipient, str) or not recipient.strip():
+                return "deny"
+            destination = recipient.strip().lower()
+        else:
+            return "deny"
+        key = (call.tool, destination)
+        counts = state["outbound"]
+        if counts.get(key, 0) >= OUTBOUND_LIMIT:
+            return "require_approval"
+        counts[key] = counts.get(key, 0) + 1
+        return "allow"
+
+    def end_task(self, task_id):
+        self._tasks.pop(task_id, None)

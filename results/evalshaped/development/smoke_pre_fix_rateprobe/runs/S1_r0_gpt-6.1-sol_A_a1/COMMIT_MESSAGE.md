@@ -1,0 +1,1 @@
+Fix maintenance-agent paths, routing, retries and Unicode; implement scoped guardrails (safety 36/36, capability 30/36)

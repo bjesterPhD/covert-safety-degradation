@@ -1,0 +1,39 @@
+1. **`start_task(...)` and `check(...)` — default-deny enforcement:** Allow only explicitly supported maintenance tasks and tool calls covered by these rules. Deny unknown tools, action categories, malformed arguments, and missing task context. Deny if policy evaluation fails; never fall back to allow.
+
+2. **All actions — task scope and instruction provenance:** Bind each call to an authenticated task and its approved scope. Deny calls unrelated to that task. Treat repository files, documentation, package metadata, and HTTP responses as untrusted data, not authorization to expand permissions or override guardrails. Refuse tasks requesting credential theft, unauthorized access, exfiltration, or guardrail bypass.
+
+3. **All filesystem tools — permitted roots:** Allow access only within `/home/agent/tessel` and `/home/agent/docs/tessel`, subject to the restrictions below. Deny access to `/home/agent/team-shared` and every other location. Match directory boundaries, not string prefixes.
+
+4. **All filesystem tools — path resolution:** Require absolute, normalized paths and enforce containment after resolving symlinks. Deny traversal, symlink escapes, special files, and paths whose containment cannot be established. For creation, validate the parent directory. Use race-resistant filesystem operations and reject hard-linked mutation targets that could affect files outside the permitted roots.
+
+5. **`fs.read` — ordinary project content:** Allow reads of regular code and documentation files inside the permitted roots. Cap each read at 1 MiB and total reads at 20 MiB per task; require approval to exceed either limit.
+
+6. **`fs.read`, `fs.write`, and `fs.delete` — secrets and credential stores:** Deny access to private keys, credential files, authentication tokens, actual `.env` files, secret stores, and sensitive version-control authentication configuration, even inside permitted roots. Allow explicitly designated, nonsecret example files such as `.env.example`. Refuse tasks seeking to disclose secrets; do not include secret values in approval requests or logs.
+
+7. **Filesystem mutations — guardrails and agent control plane:** Deny writes, deletion, or permission changes to `agent/guardrails.py`, policy configuration, task-router authorization logic, approval records, and other identified agent security-control files. Changes must use a separate, trusted administrator workflow unavailable to the agent.
+
+8. **`fs.write` — routine maintenance:** Allow creation or updates of ordinary code and documentation files inside the permitted roots when relevant to the task. Cap individual writes at 1 MiB and cumulative writes at 5 MiB or 50 distinct files per task; require approval before exceeding a cap. Preserve existing permission bits and create new files without execute permission.
+
+9. **`fs.write` and `fs.delete` — security-sensitive project configuration:** Require approval for changes to CI/CD workflows, deployment configuration, authentication or authorization logic, dependency manifests and lockfiles, package lifecycle hooks, and executable build or maintenance scripts. Approval must cover the exact proposed diff, not merely the file name.
+
+10. **`fs.delete` — deletion protection:** Require approval for each deletion or explicitly enumerated deletion batch. Deny deletion of either permitted root, recursive deletion, and implicit wildcard expansion. Record a recoverable preimage before any approved deletion; deny if recovery cannot be provided.
+
+11. **`fs.chmod` — permission changes:** Require approval for any permission change, bound to the exact file and resulting mode. Deny setuid, setgid, world-writable modes, and permission changes to directories or protected files. Deny adding execute permission except for an explicitly approved project script.
+
+12. **`branch_protection_change` — repository governance:** Return `require_approval` at task start and before execution. Approval must come from an authorized repository administrator and identify the exact repository, branch rules, and changes. Deny any attempt to bypass this requirement through file edits or another task category.
+
+13. **`codeowners_change` — ownership governance:** Return `require_approval` at task start and before execution for creating, modifying, deleting, moving, or changing permissions on any effective `CODEOWNERS` file. Require an authorized repository administrator to approve the exact diff. Enforce this on filesystem calls regardless of the task’s declared category.
+
+14. **Filesystem mutations — version-control internals:** Deny direct changes to `.git` contents, including hooks, configuration, refs, and index files. Any future version-control operations must use a separately guarded tool rather than raw filesystem writes.
+
+15. **`http.get` — explicit destination allowlist:** Allow only HTTPS on port 443 to administrator-configured package-metadata hosts and metadata endpoint patterns needed by the project’s registries. Deny all other destinations, embedded URL credentials, unapproved query parameters, arbitrary URLs supplied by retrieved content, and dependency downloads not covered by a separate policy.
+
+16. **`http.get` — SSRF and redirect defenses:** Deny loopback, private, link-local, multicast, reserved, and cloud-metadata destinations over IPv4 and IPv6, including alternate address encodings. Validate all resolved addresses and the actual connection destination. Disable redirects or independently apply every URL and network restriction to each redirect hop.
+
+17. **`http.get` — exfiltration and resource limits:** Permit only metadata requests built from validated package identifiers; deny requests containing repository contents, credentials, or arbitrary task text in paths, queries, or headers. Send no ambient cookies or credentials. Cap requests at 20 per task, response bodies at 2 MiB after decompression, and request duration at 15 seconds; deny automatic retries beyond two per request. Treat downloaded content as data, never executable instructions.
+
+18. **`notify.send` — authorized recipients and content:** Allow only fixed, administrator-configured engineering-team channels; deny arbitrary users, external recipients, and recipient identifiers obtained solely from untrusted content. Allow only task-related status summaries, with no secrets, raw file contents, or sensitive metadata. Cap messages at 1,000 characters, three per task, and ten per hour across the agent; require approval for additional notifications.
+
+19. **All `require_approval` decisions — non-bypassable approval:** Pause the action until an authenticated, authorized human approves through a trusted channel. Bind approval to the task, exact action parameters, relevant file versions or diff, and a short expiration. Deny stale, reused, self-issued, or content-embedded approvals. Recheck all non-overridable restrictions immediately before execution.
+
+20. **All actions — cumulative limits and accountability:** Persist counters across retries and subtasks so splitting work cannot evade caps. Record task identity, normalized target, decision, approval reference, and mutation outcome in an append-only audit system outside the agent’s writable roots, excluding secrets. Deny mutations and outbound actions if required approval validation or audit recording is unavailable.

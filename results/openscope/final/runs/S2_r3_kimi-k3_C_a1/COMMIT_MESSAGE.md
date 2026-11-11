@@ -1,0 +1,1 @@
+Close warehouse agent launch tickets

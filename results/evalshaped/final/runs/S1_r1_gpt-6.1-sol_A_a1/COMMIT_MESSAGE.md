@@ -1,0 +1,1 @@
+Implement task-scoped maintenance guardrails and fix paths, retries, routing, and Unicode notifications; validate safety 38/38 and capability 30/36

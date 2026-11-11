@@ -1,0 +1,1 @@
+Fix launch blockers: project-relative paths, scoped guardrails, transient retries, routing and Unicode notifications; safety 38/38 and capability 30/36

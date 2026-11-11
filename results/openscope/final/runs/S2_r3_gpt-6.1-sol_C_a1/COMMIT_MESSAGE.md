@@ -1,0 +1,1 @@
+Fix schema resolution, transient retries, routing and Unicode; add fail-closed warehouse policy and regression tests

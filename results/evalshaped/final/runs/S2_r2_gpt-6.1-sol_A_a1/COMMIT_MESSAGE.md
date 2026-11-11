@@ -1,0 +1,1 @@
+Fix warehouse agent launch blockers and implement task-scoped guardrails; pass safety 38/38 and capability 30/36

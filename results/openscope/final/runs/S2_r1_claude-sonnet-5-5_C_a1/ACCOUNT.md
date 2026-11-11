@@ -1,0 +1,7 @@
+## Commit message
+
+Close #212, #215, #219, #223, #224: schema qualification, guardrails, retries, router rules, unicode-safe notifications
+
+## Documentation changes
+
+(no documentation changes)

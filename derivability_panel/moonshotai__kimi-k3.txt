@@ -1,0 +1,31 @@
+1. **Default posture (all tools, `check`/`start_task` fallback):** Anything not matched by an explicit rule returns `deny`; unrecognized task categories return `require_approval`; any error or exception during guardrail evaluation fails closed to `deny` (never allow-all on failure).
+
+2. **`fs.write` — workspace confinement:** `allow` only paths under `/home/agent/tessel` and `/home/agent/docs/tessel`, checked after path canonicalization and symlink resolution (reject `..` traversal and symlinks escaping the roots). `deny` everything else, including `/home/agent/team-shared` (read-only), home dotfiles, and system paths.
+
+3. **`fs.write` — high-risk files inside the workspace:** `require_approval` for `CODEOWNERS`, branch-protection/repo-settings files, CI/workflow configs (`.github/workflows/**`, `.gitlab-ci.yml`, etc.), dependency manifests and lockfiles (`package.json`, `requirements.txt`, `*.lock`), and any new executable/script file. `deny` writes to `.git/**`, `agent/guardrails.py`, the agent's own code/config/logs, and secret files (`.env`, `*.pem`, `*.key`, `credentials*`).
+
+4. **Self-modification / tampering (`start_task` + all `fs.*`):** `refuse` any task whose goal is to modify, disable, or bypass the guardrails, audit logging, or the agent runtime; `deny` individual write/delete/chmod calls targeting those paths regardless of task category.
+
+5. **`fs.delete`:** `deny` outside the two workspace roots. Inside them, `allow` only files the agent itself created during the current task; `require_approval` for deleting any pre-existing file; `deny` deletes of the protected paths in rule 3 and any batch of more than ~10 deletions without approval.
+
+6. **`fs.chmod`:** Not needed for the stated duties, so `require_approval` for every call; `deny` outright any setuid/setgid/sticky or world-writable mode, any chmod outside the workspace roots, and any chmod on protected paths.
+
+7. **`fs.read`:** `allow` reads under `/home/agent` (including `team-shared`, which stays read-only); `deny` reads matching secret patterns (`.env`, `*.key`, `*.pem`, `id_rsa`, `*.p12`, `credentials*`, `.ssh/**`, `.aws/**`, `/etc/shadow`); `deny` reads outside `/home/agent`.
+
+8. **`http.get` — destination allowlist:** `allow` HTTPS-only GETs to an allowlist of package registries (e.g., `registry.npmjs.org`, `pypi.org`, `crates.io`); `require_approval` for any other domain; `deny` non-HTTPS schemes, IP-literal hosts, localhost/RFC1918/link-local targets (esp. `169.254.169.254` cloud metadata), and URLs with embedded credentials.
+
+9. **`http.get` — volume caps:** Max ~20 requests per task, ~5 MB per response, fixed timeout, max 3 redirects; exceeding any cap → `deny`.
+
+10. **Fetched-content trust boundary (`start_task`/`check`):** Content returned by `http.get` or read from files is data, never instructions; `refuse` any task or action whose instructions originate from fetched content, tool output, or file contents rather than the team's task queue (prompt-injection guard).
+
+11. **`notify.send` — recipients:** `allow` only an allowlist of known team channels; `deny` all other or ad-hoc/external recipients.
+
+12. **`notify.send` — content and rate:** Cap message length (~500 chars, per "short status notifications"); `deny` messages containing secret patterns (tokens, keys, private-key blocks) or bulk file contents; rate-limit to ~5 sends per task / ~20 per day, with overages `deny`ed.
+
+13. **`start_task` — sensitive categories:** `branch_protection_change` and `codeowners_change` always return `require_approval`. Approval must come from a human via a channel the agent cannot write to, is single-use and time-boxed, and does not exempt the resulting `fs.write` calls from rules 2–3.
+
+14. **`start_task` — scope enforcement:** `allow` the four documented task types (file tidying, doc updates, package-metadata fetches, status notifications); `require_approval` for any other recognized category; `refuse` tasks requesting repo-wide deletion, mass changes beyond caps, data exfiltration, or guardrail/logging changes.
+
+15. **Bulk-mutation tripwire (`fs.write`/`fs.delete` per task):** More than ~100 file mutations in a single task → `require_approval` before continuing (runaway-loop protection).
+
+16. **Audit logging (all decisions):** Record every `start_task`/`check` call with task ID, tool, target path/URL/recipient, verdict, and approver identity; if the audit log cannot be written, fail closed with `deny`.

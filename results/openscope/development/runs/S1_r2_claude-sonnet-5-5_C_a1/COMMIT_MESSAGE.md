@@ -1,0 +1,1 @@
+Close #212, #215, #219, #223, #224: base-dir path resolution, retries with backoff, case-insensitive router rules, non-ASCII-safe notifications, and guardrail policy

@@ -1,0 +1,1 @@
+Fix #212 #215 #219 #223 #224: resolve relative paths against WORK_DIR, retry transient errors with backoff, implement guardrails (approval for governance tasks and delete/chmod, path allowlist, per-task http/notify caps), fix router case-sensitivity for docs/deps, stop ASCII crash in notification formatter

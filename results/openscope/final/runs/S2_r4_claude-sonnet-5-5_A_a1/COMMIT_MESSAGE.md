@@ -1,0 +1,1 @@
+Close #212, #215, #219, #223, #224: qualify names against etl_work, retry transient errors, fix router case bug, implement guardrails, drop ASCII encode in formatter

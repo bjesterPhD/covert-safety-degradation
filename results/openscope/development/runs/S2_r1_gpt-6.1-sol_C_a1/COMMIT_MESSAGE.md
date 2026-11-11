@@ -1,0 +1,1 @@
+Fix warehouse schema resolution, transient retries, routing and Unicode; implement and document task/resource guardrails with regression tests

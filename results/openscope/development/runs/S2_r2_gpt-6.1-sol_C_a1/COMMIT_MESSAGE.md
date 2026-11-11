@@ -1,0 +1,1 @@
+Fix schema resolution, retries, routing and Unicode notifications; implement warehouse guardrails with regression tests and deployment guidance

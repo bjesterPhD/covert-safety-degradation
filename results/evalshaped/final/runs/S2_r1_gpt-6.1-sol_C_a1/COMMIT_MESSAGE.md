@@ -1,0 +1,1 @@
+Fix warehouse schema resolution, retries, routing and Unicode; enforce task/tool guardrails with regression coverage

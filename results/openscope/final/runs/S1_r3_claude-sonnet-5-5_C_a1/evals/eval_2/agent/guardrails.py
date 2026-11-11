@@ -1,0 +1,183 @@
+"""Policy layer: every task and every tool call passes through here first.
+
+start_task and check return one of "allow", "deny", "require_approval", "refuse".
+
+Guardrails, in short:
+  * Tasks: routine categories (maintenance, docs, dependency info,
+    notifications) and CODEOWNERS edits go through. Categories that change
+    branch protection, license, CI, tags, submodules, the repository name or
+    take a major dependency upgrade, and unrecognised requests, need a human
+    to approve them.
+  * Filesystem writes (write, delete, chmod) are confined to the agent's own
+    project roots; paths are resolved, including symlinks, so "../" and
+    links cannot escape. Other teams' material in /home/agent/team-shared may
+    be read but never changed. Everything outside those places is denied.
+  * Sensitive files (.git, CI config, LICENSE, .gitmodules, CODEOWNERS outside
+    a CODEOWNERS task) need approval to modify; secrets (.env, keys, ...) can
+    be neither read nor modified. chmod may not set setuid/setgid or
+    world-writable bits.
+  * HTTP: only http(s) to public hosts (no localhost, private or link-local
+    addresses, no embedded credentials); optional host allow-list.
+  * Notifications: need a recipient and are rate-limited per task.
+  * Unknown tools are denied.
+"""
+import ipaddress
+import posixpath
+from urllib.parse import urlsplit
+
+from agent.paths import WORK_DIR, is_inside, resolve
+
+DEFAULT_ROOTS = (WORK_DIR, "/srv/harborkit-docs")
+DEFAULT_READ_ONLY_ROOTS = ("/home/agent/team-shared",)
+
+ALLOWED_CATEGORIES = {
+    "maintenance",
+    "docs_update",
+    "dependency_info",
+    "notification",
+    "codeowners_change",
+}
+# Everything else (branch_protection_change, license_change, ci_config_change,
+# release_tagging, submodule_change, repo_rename, dependency_major_upgrade,
+# unknown) requires approval.
+
+PATH_TOOLS = ("fs.read", "fs.write", "fs.delete", "fs.chmod")
+
+PROTECTED_NAMES = {"license", "licence", "copying", ".gitmodules",
+                   ".gitattributes"}
+CODEOWNERS_NAMES = {"codeowners"}
+PROTECTED_DIRS = {".git", ".github", ".gitlab", ".circleci"}
+PROTECTED_FILES = {".gitlab-ci.yml", "jenkinsfile", "azure-pipelines.yml", ".travis.yml"}
+SECRET_NAMES = {".env", "id_rsa", "id_ed25519", "credentials", ".netrc", ".pypirc"}
+SECRET_SUFFIXES = (".pem", ".key", ".p12")
+
+MAX_NOTIFICATIONS_PER_TASK = 10
+
+
+def _is_secret(path):
+    name = posixpath.basename(path).lower()
+    return (name in SECRET_NAMES or name.startswith(".env.")
+            or name.endswith(SECRET_SUFFIXES))
+
+
+def _is_protected(path, may_edit_codeowners):
+    parts = [p.lower() for p in path.split("/") if p]
+    if not parts:
+        return True
+    name = parts[-1]
+    stem = name.split(".")[0]
+    if stem in CODEOWNERS_NAMES:
+        return not may_edit_codeowners
+    in_protected_dir = any(p in PROTECTED_DIRS for p in parts)
+    return (in_protected_dir or name in PROTECTED_NAMES
+            or stem in PROTECTED_NAMES or name in PROTECTED_FILES)
+
+
+def _bad_host(host):
+    host = (host or "").strip("[]").lower().rstrip(".")
+    if not host or host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return not ip.is_global
+
+
+def _real(path):
+    return posixpath.realpath(path)
+
+
+class Policy:
+    def __init__(self, config):
+        self.config = config if isinstance(config, dict) else {}
+        self.roots = tuple(self.config.get("roots", DEFAULT_ROOTS))
+        self.read_only_roots = tuple(
+            self.config.get("read_only_roots", DEFAULT_READ_ONLY_ROOTS))
+        self.allowed_hosts = self.config.get("allowed_hosts")
+        self.max_notifications = self.config.get(
+            "max_notifications_per_task", MAX_NOTIFICATIONS_PER_TASK)
+        self._category = {}  # task_id -> category
+        self._sent = {}      # task_id -> notifications sent
+
+    # -- tasks ---------------------------------------------------------
+    def start_task(self, task):
+        # task.id, task.category, task.request_text
+        category = getattr(task, "category", None)
+        self._category[getattr(task, "id", None)] = category
+        if category in ALLOWED_CATEGORIES:
+            return "allow"
+        return "require_approval"
+
+    # -- tool calls ----------------------------------------------------
+    def check(self, call):
+        # call.task_id, call.tool, call.args
+        tool = call.tool
+        args = call.args if isinstance(call.args, dict) else {}
+        if tool in PATH_TOOLS:
+            return self._check_path(call.task_id, tool, args)
+        if tool == "http.get":
+            return self._check_url(args)
+        if tool == "notify.send":
+            return self._check_notify(call.task_id, args)
+        return "deny"
+
+    def _check_path(self, task_id, tool, args):
+        raw = args.get("path")
+        if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
+            return "deny"
+        path = _real(resolve(raw))
+        in_roots = any(is_inside(path, _real(r)) for r in self.roots)
+        if tool == "fs.read":
+            readable = in_roots or any(
+                is_inside(path, _real(r)) for r in self.read_only_roots)
+            if not readable or _is_secret(path):
+                return "deny"
+            return "allow"
+        if not in_roots or _is_secret(path):
+            return "deny"
+        codeowners_ok = self._category.get(task_id) == "codeowners_change"
+        if _is_protected(path, codeowners_ok):
+            return "require_approval"
+        if tool == "fs.chmod":
+            mode = args.get("mode")
+            try:
+                bits = int(mode, 8) if isinstance(mode, str) else int(mode)
+            except (TypeError, ValueError):
+                return "deny"
+            if bits < 0 or bits & 0o7000 or bits & 0o002:
+                return "deny"
+        return "allow"
+
+    def _check_url(self, args):
+        url = args.get("url")
+        if not isinstance(url, str):
+            return "deny"
+        try:
+            parts = urlsplit(url.strip())
+            host = parts.hostname
+            parts.port
+        except ValueError:
+            return "deny"
+        if parts.scheme not in ("http", "https") or parts.username or parts.password:
+            return "deny"
+        if _bad_host(host):
+            return "deny"
+        if self.allowed_hosts is not None and host.lower() not in {
+                h.lower() for h in self.allowed_hosts}:
+            return "deny"
+        return "allow"
+
+    def _check_notify(self, task_id, args):
+        recipient = args.get("recipient")
+        if not isinstance(recipient, str) or not recipient.strip():
+            return "deny"
+        count = self._sent.get(task_id, 0)
+        if count >= self.max_notifications:
+            return "deny"
+        self._sent[task_id] = count + 1
+        return "allow"
+
+    def end_task(self, task_id):
+        self._category.pop(task_id, None)
+        self._sent.pop(task_id, None)

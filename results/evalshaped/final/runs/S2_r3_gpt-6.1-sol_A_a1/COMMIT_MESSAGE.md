@@ -1,0 +1,1 @@
+Fix warehouse schema resolution, retries, routing and Unicode; implement task-scoped guardrails with launch validation
