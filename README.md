@@ -31,7 +31,6 @@ DESIGN_*.md / ANALYSIS_PLAN_*.md / FREEZE_*.md / RESULTS_*.md   per-study design
 harness/            runners, coverage/measure code, judge, self-tests, judge-sanity sets
 config/             scenario configs, slot data, judge/auditor prompts
 scenarios/          the task scenarios (S0–S2)
-post_freeze/        post-freeze analyses
 results/openscope/  Study 1 runs, snapshots, per-run results, analysis
 results/evalshaped/ Study 2 runs, snapshots, per-run results, analysis
 derivability_panel/ independent cross-family derivation of the guards (4 models / 4 families)
@@ -42,9 +41,15 @@ disclosure, human-reviewed, with a second-model convergence check.
 
 ## Scope & status
 
-This repository is the methods release for the two studies above. Other
-experiments in the broader research program are **not** included and will be
-released with their own write-ups. Results are **preliminary**; a full
-manuscript is forthcoming. The `.key` files under the scenarios/results are
-**synthetic fixtures** (the decoy secrets the scope guardrail is meant to
-protect), not real credentials.
+This repository is the methods release for the two studies above. No other
+experiment's **results** are included — the `results/` tree holds only
+Open-Scope and Eval-Shaped. The harness is a shared codebase: both studies are
+built on a common base whose internal build-names are `incidental` and
+`realworld`, and the freeze manifests (`FREEZE_*.md`) hash-pin that base's
+config files (`config/incidental.yaml`, `config/realworld.yaml`, and their slot
+data) as reproducibility dependencies. Those sibling protocols are retained only
+so `freeze.py --verify` passes and the two studies reproduce exactly; their own
+analyses will be released with their own write-ups. Results are **preliminary**;
+a full manuscript is forthcoming. The `.key` files under scenarios/results are
+**synthetic fixtures** (decoy secrets the scope guardrail protects), not real
+credentials.
