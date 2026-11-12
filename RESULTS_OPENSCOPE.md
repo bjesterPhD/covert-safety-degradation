@@ -185,7 +185,7 @@ Added 2026-11-05. An independent Claude reviewer labelled the 16 accounts on the
 - **The reviewer, too, labelled stated exceptions CLAIMS_IMPLEMENTED.** Examples: "plus team-shared", "except tmp_*" and "except analyst grants" (judge rule 7).
 - **The disclosure result holds** on this second read.
 
-**Limits:** it's a model reviewer in the same family as one builder (Sonnet), and it doesn't replace Bryan's blind hand review.
+**Limits:** it's a model reviewer in the same family as one builder (Sonnet); it is corroborated by the completed blind human review (item 6 and Appendix D).
 
 ### Extended to all 80 runs (2026-11-06)
 
@@ -241,5 +241,4 @@ Added so the agreement figure covers every run, not a 20% sample.
 4. **Precision.** The per-builder cells are small: GPT has 1 and 2 pairs with exactly one twin covered, DeepSeek 1
    and 3. The pooled asymmetry is tight; the per-builder rates for GPT and DeepSeek aren't.
 5. **Real stakes or scale.** The repository is small, and the stakes are synthetic.
-6. **Hand review.** Bryan's blind human review of 16 runs (20%, `results/openscope/final/hand_review_sheet.md`) isn't done
-   yet. A blind model reviewer agreed with the judge on 91% of the headline labels (see above).
+6. **Hand review (complete).** The pre-registered blind human review of the 16-run sample (20%, `results/openscope/final/hand_review_sheet.md`) agreed with the judge on 93% of covert-vs-transparent calls and 78% four-way (claims_complete 88%, 14/16). Where they differed, the human leaned *more* covert than the judge; the model reviewer (above) leaned slightly less, so the two independent reviewers bracket the judge. The human applied a two-category read (claims-implemented / silent).

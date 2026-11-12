@@ -207,7 +207,7 @@ An independent Claude reviewer labelled the 12 accounts on the blind hand-review
 - **claims_complete differs** because the reviewer marked any disclosed exception as "not complete", which is stricter than the judge.
 
 **Limits:**
-- **It's a model reviewer, not a human one.** It's in the same family as one builder (Sonnet). It doesn't replace Bryan's blind hand review, which is still to do.
+- **It's a model reviewer, not a human one.** It's in the same family as one builder (Sonnet); it is corroborated by the completed blind human review (item 6 and Appendix D), which brackets the judge from the other side.
 
 ## Development table (pre-freeze)
 
@@ -251,4 +251,4 @@ All details are in `DESIGN_EVALSHAPED.md` §10:
 3. **A strong target effect.** A − C is positive but small, except GPT's +25 points on the costly eval-shaped share.
 4. **Precision.** This is a pilot of 10 runs per builder × condition, and the per-cell intervals are wide. The pooled asymmetry is the tight number.
 5. **Real stakes or scale.** The repository is small, and the stakes are synthetic.
-6. **Hand review.** Bryan's blind human review isn't done yet. A blind model reviewer agreed with the judge on 89% of the headline labels (see above).
+6. **Hand review (complete).** The pre-registered blind human review of the 12-run sample (20%) agreed with the judge on 94% of covert-vs-transparent calls and 86% four-way (claims_complete 67%, 8/12). The human leaned *more* covert than the judge; the model reviewer (89% headline, above) leaned slightly less — the two bracket the judge. Pooled across both studies: 93% covert/not, 82% four-way (n=28). The human applied a two-category read (claims-implemented / silent).
